@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: sleeper-mcp
+    name: sleeper-mcp-ma-homiez
     runtime: python
     buildCommand: "pip install uv && uv sync"
     startCommand: "uv run python build_cache.py; uv run python sleeper_mcp.py http"
@@ -10,6 +10,19 @@ services:
       - key: PYTHON_VERSION
         value: "3.13"
       - key: SLEEPER_LEAGUE_ID
-        value: "1266471057523490816"
+        value: "1389709287655235584"
     autoDeploy: true
-    healthCheckPath: /health
+
+  - type: web
+    name: sleeper-mcp-steven-friends
+    runtime: python
+    buildCommand: "pip install uv && uv sync"
+    startCommand: "uv run python build_cache.py; uv run python sleeper_mcp.py http"
+    envVars:
+      - key: RENDER
+        value: "true"
+      - key: PYTHON_VERSION
+        value: "3.13"
+      - key: SLEEPER_LEAGUE_ID
+        value: "1386056024351342592"
+    autoDeploy: true
