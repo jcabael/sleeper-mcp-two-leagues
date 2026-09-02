@@ -3120,8 +3120,8 @@ if __name__ == "__main__":
             port = int(sys.argv[2])
 
         # Bind to 0.0.0.0 for external access (required for cloud deployment)
-        logger.info(f"Starting MCP server in HTTP/SSE mode on port {port}")
-        mcp.run(transport="sse", port=port, host="0.0.0.0")
+        logger.info(f"Starting MCP server in Streamable HTTP mode on port {port}")
+        mcp.run(transport="http", port=port, host="0.0.0.0")
     else:
         # Default to stdio for backward compatibility (Claude Desktop)
         logger.info("Starting MCP server in STDIO mode for Claude Desktop")
