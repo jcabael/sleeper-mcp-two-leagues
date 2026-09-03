@@ -1,0 +1,23 @@
+name: Keep Render Services Warm
+
+on:
+  schedule:
+    # Every 10 minutes -- comfortably under Render's ~15 minute free-tier
+    # idle spin-down threshold, so the process (and its MCP sessions) never
+    # gets recycled from inactivity.
+    - cron: '*/10 * * * *'
+  workflow_dispatch:  # Allow manual trigger from GitHub UI
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Ma Homiez service
+        run: |
+          curl -s -o /dev/null -w "ma-homiez: HTTP %{http_code} in %{time_total}s\n" \
+            --max-time 45 https://sleeper-mcp-ma-homiez.onrender.com/ || true
+
+      - name: Ping Steven and Friends service
+        run: |
+          curl -s -o /dev/null -w "steven-friends: HTTP %{http_code} in %{time_total}s\n" \
+            --max-time 45 https://sleeper-mcp-steven-friends.onrender.com/ || true
