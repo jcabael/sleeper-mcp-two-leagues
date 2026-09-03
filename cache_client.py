@@ -7,6 +7,7 @@ Provides automatic refresh on cache miss/expiry.
 import json
 import gzip
 import redis
+import httpx
 import os
 import logging
 from typing import Dict, Any, Optional, Set
@@ -20,11 +21,60 @@ load_dotenv()
 # Configure logging
 logger = logging.getLogger(__name__)
 
+# In-process fallback cache, used when Redis is unavailable (e.g. no REDIS_URL
+# configured, as on the free-tier Render deployments). Avoids re-fetching the
+# ~5MB Sleeper player dataset on every call.
+_fallback_players_cache: Optional[Dict[str, Any]] = None
+_fallback_players_cached_at: Optional[datetime] = None
+
 
 def get_redis_client() -> redis.Redis:
     """Get Redis client connection."""
     redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
     return redis.from_url(redis_url, decode_responses=False)
+
+
+def _get_players_fallback(active_only: bool = True) -> Optional[Dict[str, Any]]:
+    """
+    Fetch the raw Sleeper player dictionary directly, bypassing Redis and the
+    Fantasy Nerds enrichment pipeline. Used when Redis isn't configured/reachable
+    so that basic name/team/position lookups still work without a cache layer.
+    Cached in-process for 6 hours to avoid refetching on every call.
+    """
+    global _fallback_players_cache, _fallback_players_cached_at
+
+    age_hours = (
+        (datetime.now() - _fallback_players_cached_at).total_seconds() / 3600
+        if _fallback_players_cached_at
+        else None
+    )
+
+    if _fallback_players_cache is None or age_hours is None or age_hours >= 6:
+        try:
+            logger.info("Fetching Sleeper players directly (Redis unavailable)")
+            with httpx.Client(timeout=30.0) as client:
+                response = client.get("https://api.sleeper.app/v1/players/nfl")
+                response.raise_for_status()
+                _fallback_players_cache = response.json()
+                _fallback_players_cached_at = datetime.now()
+        except Exception as e:
+            logger.error(
+                f"Fallback player fetch failed (error_type={type(e).__name__}, error_message={str(e)})",
+                exc_info=True,
+            )
+            return _fallback_players_cache  # may be None, or stale data if we have it
+
+    players = _fallback_players_cache
+    if not players:
+        return None
+
+    if active_only:
+        return {
+            pid: pdata
+            for pid, pdata in players.items()
+            if pdata.get("active", False) is True and pdata.get("team") is not None
+        }
+    return players
 
 
 def get_players_from_cache(active_only: bool = True) -> Optional[Dict[str, Any]]:
@@ -108,10 +158,11 @@ def get_players_from_cache(active_only: bool = True) -> Optional[Dict[str, Any]]
 
     except Exception as e:
         logger.error(
-            f"Error accessing player cache (error_type={type(e).__name__}, error_message={str(e)}, active_only={active_only})",
+            f"Error accessing player cache, falling back to direct Sleeper fetch "
+            f"(error_type={type(e).__name__}, error_message={str(e)}, active_only={active_only})",
             exc_info=True,
         )
-        return None
+        return _get_players_fallback(active_only=active_only)
 
 
 def normalize_name(name: str) -> str:
